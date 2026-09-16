@@ -93,7 +93,6 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 40px;
   padding: 40px 24px;
   background: radial-gradient(1200px 700px at 50% -10%, rgba(153, 69, 255, 0.1), transparent 70%), #050509;
 }
@@ -101,12 +100,8 @@ a:hover {
 @media (max-width: 900px) {
   .pafa-stage {
     padding: 0;
-    gap: 0;
     align-items: stretch;
     background: #06060b;
-  }
-  .pafa-stage .pafa-tweaks {
-    display: none;
   }
   /* Drop the bezel and fill the viewport on phones. */
   .pafa-stage .pafa-device {

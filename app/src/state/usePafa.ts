@@ -267,7 +267,7 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
           note: perk.n,
           req: money(tier.threshold),
           held: money(holding.value),
-          code: 'PAFA-' + holding.ticker.slice(0, 3) + '-' + (1000 + Math.floor(Math.random() * 8999)),
+          code: 'PAFE-' + holding.ticker.slice(0, 3) + '-' + (1000 + Math.floor(Math.random() * 8999)),
         },
       }));
       go('redeem');
@@ -344,11 +344,17 @@ function buildViewModel(args: {
     };
   };
 
-  const transactions: Transaction[] = SEED_TRANSACTIONS.filter((t) => t.id !== 'tx-nke' || model.paid).map((t) => ({
-    ...t,
-    // This month's earnings follow the waiver; older ones already vested.
-    status: THIS_MONTH_TX_IDS.has(t.id) ? (waived ? 'Vested' : 'Vesting') : 'Vested',
-  }));
+  const transactions: Transaction[] = SEED_TRANSACTIONS.filter((t) => t.id !== 'tx-nke' || model.paid).map((t) => {
+    const isCurrentPurchase = t.id === 'tx-nke' && model.paid;
+    return {
+      ...t,
+      // Use the actual settlement receipt for the purchase made in this session.
+      signature: isCurrentPurchase ? receipt?.signature ?? undefined : t.signature,
+      onChain: isCurrentPurchase ? receipt?.onChain ?? false : t.onChain,
+      // This month's earnings follow the waiver; older ones already vested.
+      status: THIS_MONTH_TX_IDS.has(t.id) ? (waived ? 'Vested' : 'Vesting') : 'Vested',
+    };
+  });
 
   const decorateTx = (t: Transaction) => ({
     ...t,
@@ -356,6 +362,7 @@ function buildViewModel(args: {
     earnStr: '+' + t.fill,
     earnColor: t.status === 'Vested' ? '#14F195' : '#FFB84D',
     statusColor: t.status === 'Vested' ? '#14F195' : '#FFB84D',
+    transferPending: t.id === 'tx-nke' && model.paid && settling && !receipt,
   });
 
   const allTx = transactions.map(decorateTx);
@@ -463,7 +470,7 @@ function buildViewModel(args: {
   const spendAfter = model.spend + (model.paid ? 0 : gross);
 
   const titles: Record<Screen, string> = {
-    home: 'PAFA',
+    home: 'PAFE',
     stocks: 'Stocks',
     pay: 'Pay',
     review: 'Confirm',

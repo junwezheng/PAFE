@@ -85,7 +85,9 @@ await step('vesting removed + 3 lots released', async () => {
   if (n !== 3) throw new Error(`expected 3 released rows, got ${n}`);
 });
 await step('settlement receipt renders', async () => {
-  await page.getByText('Settlement').waitFor({ timeout: 8000 });
+  // Exact match: a devnet run also renders a "Settlement failed: …" note, and a
+  // substring match would resolve to both and trip strict mode.
+  await page.getByText('Settlement', { exact: true }).waitFor({ timeout: 8000 });
   await page.getByText('Not settled').waitFor({ timeout: 5000 });
 });
 
@@ -108,9 +110,9 @@ await step('redeem a benefit', async () => {
   await page.getByText('Redeem benefit').click();
   await page.getByText('Member code').waitFor({ timeout: 5000 });
 });
-await step('member code matches PAFA-NKE-####', async () => {
-  const code = await page.locator('text=/^PAFA-NKE-\\d{4}$/').first().textContent();
-  if (!/^PAFA-NKE-\d{4}$/.test(code ?? '')) throw new Error(`got "${code}"`);
+await step('member code matches PAFE-NKE-####', async () => {
+  const code = await page.locator('text=/^PAFE-NKE-\\d{4}$/').first().textContent();
+  if (!/^PAFE-NKE-\d{4}$/.test(code ?? '')) throw new Error(`got "${code}"`);
 });
 
 // ── remaining screens ──
@@ -139,40 +141,8 @@ await step('transaction detail', async () => {
   await page.getByText('Nike Store Orchard').first().click();
   await page.getByText('Stock earned').waitFor({ timeout: 5000 });
   await page.getByText('Value at fill').waitFor({ timeout: 5000 });
-});
-
-// ── tweaks panel reactivity ──
-await step('tweaks: cashback slider changes the rate everywhere', async () => {
-  await page.locator('text=Home').last().click();
-  const slider = page.locator('.pafa-tweaks input[type=range]').first();
-  await slider.fill('6');
-  await page.locator('text=Pay').last().click();
-  await page.getByText('Simulate a scan').click();
-  await page.getByText('6% in stock').waitFor({ timeout: 5000 });
-});
-
-// Regression: shortening vestingDays below a lot's remaining time used to drive
-// ring progress negative, producing an invalid stroke-dasharray.
-await step('tweaks: vesting-days slider keeps ring geometry valid', async () => {
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.getByText('Portfolio value · USD').waitFor({ timeout: 8000 });
-  await page.getByText('Vesting', { exact: true }).first().click();
-  await page.getByText('Vesting now').waitFor({ timeout: 5000 });
-
-  const days = page.locator('.pafa-tweaks input[type=range]').nth(2);
-  for (const value of ['1', '60', '3']) {
-    await days.fill(value);
-    const dashes = await page.locator('circle[stroke-dasharray]').evaluateAll((nodes) =>
-      nodes.map((n) => n.getAttribute('stroke-dasharray')),
-    );
-    if (dashes.length === 0) throw new Error('no vesting rings rendered');
-    for (const d of dashes) {
-      const [drawn, circumference] = (d ?? '').split(' ').map(Number);
-      if (!Number.isFinite(drawn) || drawn < 0 || drawn > circumference + 0.05) {
-        throw new Error(`vestingDays=${value} produced stroke-dasharray "${d}"`);
-      }
-    }
-  }
+  await page.getByText('Stock transfer').waitFor({ timeout: 5000 });
+  await page.getByText('PAFE rewards treasury').waitFor({ timeout: 5000 });
 });
 
 await browser.close();

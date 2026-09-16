@@ -88,10 +88,13 @@ export interface Transaction {
   now: string;
   status: TxStatus;
   brandName: string;
+  /** Solana transaction that delivered the cashback stock. */
   signature?: string;
+  /** True only when the signature can be verified on the configured cluster. */
+  onChain?: boolean;
 }
 
-/** Tunable economics — surfaced in the Tweaks panel, mirrors the prototype props. */
+/** Cashback economics used across the demo. */
 export interface Economics {
   /** Percent of spend paid back in stock. */
   cashbackRate: number;

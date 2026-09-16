@@ -1,4 +1,4 @@
-# PAFA — demo build
+# PAFE — demo build
 
 Implementation of the Claude Design handoff in `project/PAFA App.dc.html`: a cashback app that pays
 you in the stock of the brand you just bought from, tokenised on Solana.
@@ -22,7 +22,7 @@ That's the whole setup. With no configuration the app runs **fully offline** in 
 mock auth, simulated settlement, no network calls. Every screen and the complete hero flow work.
 
 Open it on a phone-width viewport and the bezel drops away and it fills the screen; on desktop it
-renders inside an iPhone frame with a Tweaks panel for the economics.
+renders centred inside an iPhone frame.
 
 ## The hero flow
 
@@ -46,7 +46,8 @@ Implemented identically in `app/src/domain/vesting.ts` and `onchain/programs/paf
 
 Cashback is **3.5%**. Tiers unlock at **$100 / $500 / $1,000** of that brand's stock held.
 
-All three numbers are live in the Tweaks panel and are stored on-chain in the program `Config`.
+The economics come from `DEFAULT_ECONOMICS` in `app/src/domain/types.ts` and are stored on-chain in
+the program `Config`.
 
 ## Going on-chain
 
@@ -110,10 +111,29 @@ Copy `app/.env.example` to `app/.env.local` and fill in `VITE_SOLANA_RPC`, `VITE
 cd onchain && cargo test --lib      # program logic, incl. calendar-month math
 cd app && npm run typecheck
 cd app && npm run build && npm run preview &
-cd app && npm run test:smoke        # 23 checks: drives the whole flow in a browser
+cd app && npm run test:smoke        # 22 checks: drives the whole flow in a browser
 ```
 
 The smoke test needs a Chromium: `npx playwright install chromium`.
+
+Run the smoke test against a build made *without* `app/.env.local`. With it present the app takes
+the devnet path and posts to the local settlement service, so the receipt reports a failure instead
+of the simulated result the assertions expect.
+
+## Deploying the demo
+
+The app is a static SPA — no server, no API, and no router, so any static host works. On Vercel:
+set the **root directory to `app`**; the build command (`npm run build`) and output directory
+(`dist`) are detected automatically.
+
+**Do not set any `VITE_*` variables on the host.** Vite inlines them into the client bundle at
+build time. With none set the app runs in mock-auth, simulated-settlement mode, which is what a
+public demo should do — no wallet, no RPC, no treasury.
+
+`app/.npmrc` pins `legacy-peer-deps=true`. It is required: `@privy-io/react-auth` pulls
+`@solana/kit`, `@solana-program/system` and `@solana-program/token` in as optional peers, and their
+own peer ranges disagree with the Kit v2 line Privy is built against. Without the flag a clean
+`npm ci` fails with `ERESOLVE` and the host build never starts.
 
 ## How the pieces fit
 

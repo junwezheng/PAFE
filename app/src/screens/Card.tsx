@@ -39,7 +39,7 @@ export function CardScreen({ vm, actions }: ScreenProps) {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <span style={{ fontFamily: SORA, fontWeight: 700, fontSize: 17, letterSpacing: '.1em', color: C.bg }}>
-              PAFA
+              PAFE
             </span>
             <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', color: 'rgba(6,6,11,.7)' }}>
               VIRTUAL

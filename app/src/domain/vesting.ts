@@ -39,10 +39,9 @@ export function vestingView(spend: number, econ: Economics, now: number = Date.n
  * When this lot unlocks under the *current* economics.
  *
  * `lot.unlockAt` is the value written on-chain when the lot was created. The
- * Tweaks panel can change `vestingDays` after the fact, so the countdown is
- * derived from `earnedAt` instead — otherwise shortening the vesting period
- * leaves a ring showing more time remaining than the period itself, which
- * drives the progress negative.
+ * countdown is derived from `earnedAt` and the current `vestingDays` instead,
+ * so a shorter period cannot leave a ring showing more time remaining than
+ * the period itself (which drove progress negative).
  */
 export function effectiveUnlockAt(lot: VestingLot, econ: Economics): number {
   return lot.earnedAt + econ.vestingDays * DAY_MS;

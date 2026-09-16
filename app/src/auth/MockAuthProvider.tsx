@@ -4,14 +4,29 @@ import { AuthContext, type AuthState } from './context';
 import type { PafaWallet } from '../solana/service';
 
 const STORAGE_KEY = 'pafa.mock-session';
+const WALLET_STORAGE_KEY = 'pafa.mock-wallet';
+
+function loadOrCreateWallet(): Keypair {
+  try {
+    const saved = localStorage.getItem(WALLET_STORAGE_KEY);
+    if (saved) {
+      return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(saved) as number[]));
+    }
+    const created = Keypair.generate();
+    localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(Array.from(created.secretKey)));
+    return created;
+  } catch {
+    return Keypair.generate();
+  }
+}
 
 /**
  * Stand-in for Privy so the demo runs with no credentials.
  *
- * It mints a throwaway keypair per session and can genuinely sign — which means
+ * It keeps a throwaway keypair in localStorage and can genuinely sign — which means
  * the devnet path stays exercisable without a Privy app id, as long as the
- * keypair is funded. The session is remembered in localStorage so a reload
- * doesn't bounce you back to the login screen.
+ * settlement service sponsors its transaction fees. This is demo-only key
+ * storage; production always uses Privy's embedded wallet.
  */
 export function MockAuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(() => {
@@ -22,8 +37,8 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // One keypair for the life of the tab.
-  const keypair = useMemo(() => Keypair.generate(), []);
+  // Stable across reloads so existing user/lot PDAs remain reachable.
+  const keypair = useMemo(loadOrCreateWallet, []);
 
   const wallet: PafaWallet = useMemo(
     () => ({
@@ -42,7 +57,7 @@ export function MockAuthProvider({ children }: { children: ReactNode }) {
       ready: true,
       authenticated,
       displayName: 'Junwei L',
-      handle: 'demo@pafa.app',
+      handle: 'demo@pafe.app',
       wallet: authenticated ? wallet : null,
       login: () => {
         setAuthenticated(true);

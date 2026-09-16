@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { IOSDevice } from './ios/IOSDevice';
 import { Header } from './components/Header';
 import { TabBar } from './components/TabBar';
-import { Tweaks } from './components/Tweaks';
 import { useAuth } from './auth/context';
 import { usePafa } from './state/usePafa';
-import { DEFAULT_ECONOMICS, type Economics } from './domain/types';
+import { DEFAULT_ECONOMICS } from './domain/types';
 import { C } from './theme';
 import { Home } from './screens/Home';
 import { Stocks } from './screens/Stocks';
@@ -19,16 +17,14 @@ import { TxDetail } from './screens/TxDetail';
 import { Login } from './screens/Login';
 
 export default function App() {
-  const [econ, setEcon] = useState<Economics>(DEFAULT_ECONOMICS);
   const { authenticated, ready } = useAuth();
-  const pafa = usePafa(econ);
+  const pafa = usePafa(DEFAULT_ECONOMICS);
 
   return (
     <div className="pafa-stage">
       <IOSDevice dark>
         {!ready || !authenticated ? <Login /> : <Shell pafa={pafa} />}
       </IOSDevice>
-      <Tweaks econ={econ} onChange={setEcon} chainLabel={pafa.vm.chainLabel} chainMode={pafa.vm.chainMode} />
     </div>
   );
 }

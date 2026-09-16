@@ -1,5 +1,5 @@
 /**
- * Port of the prototype's `ios-frame.jsx` starter — only the pieces the PAFA
+ * Port of the prototype's `ios-frame.jsx` starter — only the pieces the PAFE
  * design actually mounts: the bezel, the dynamic island, the status bar and the
  * home indicator. (The starter's nav bar and keyboard are unused here because
  * the design passes no `title` and renders its own header.)

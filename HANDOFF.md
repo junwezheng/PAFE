@@ -1,4 +1,4 @@
-# Handoff — PAFA demo, continuing the test pass
+# Handoff — PAFE demo, continuing the test pass
 
 You're picking up a demo app built from a Claude Design handoff (`project/PAFA App.dc.html`).
 Everything below is current as of this commit. Read `DEMO.md` first for what the product does and
@@ -19,47 +19,48 @@ settlement, zero network calls. Every screen works, and so does the whole hero f
 | Check | Command | Result |
 |---|---|---|
 | Program logic, incl. calendar-month math | `cd onchain && cargo test --lib` | 5/5 pass |
-| Program compiles | `cd onchain && cargo check --lib` | clean (warnings only, all from Anchor's own macros) |
+| Program compiles (host) | `cd onchain && cargo check --lib` | clean (warnings only, all from Anchor's own macros) |
+| Program compiles to SBF | `cd onchain && anchor build` | clean (same Anchor macro warnings) |
+| Instruction coverage, incl. 14-day cliff + month-rollover | `cd onchain && anchor test` | 14/14 pass |
+| Hand-rolled encoding in `program.ts` | same `anchor test` suite | discriminators, meta flags, and every instruction against the .so |
 | Types, app | `cd app && npm run typecheck` | clean |
-| Types, scripts | `cd onchain && npx tsc --noEmit` | clean |
-| Production build | `cd app && npm run build` | clean |
-| End-to-end browser flow | `cd app && npm run build && npm run preview` then `npm run test:smoke` | 24/24 pass |
+| Types, scripts + tests | `cd onchain && npx tsc --noEmit` | clean |
+| Production build | `cd app && npm run build` | clean (see the peer-dep note below) |
+| End-to-end browser flow | `cd app && npm run build && npm run preview` then `npm run test:smoke` | 22/22 pass |
 
 `app/tests/smoke.mjs` drives login → vesting countdowns → pay → confirm → earned → brand tiers →
-redeem → every remaining screen → the Tweaks sliders. It needs a Chromium:
-`npx playwright install chromium`. Playwright is pinned to 1.56.1 deliberately — a floating range
-picked a version whose expected browser build didn't match what was installed.
+redeem → every remaining screen. It needs a Chromium: `npx playwright install chromium`. Playwright
+is pinned to 1.56.1 deliberately — a floating range picked a version whose expected browser build
+didn't match what was installed.
+
+Run it against a build made *without* `app/.env.local`, which is also how a host builds it. With
+that file present the app takes the devnet path and the receipt reports a settlement failure rather
+than the simulated result the assertions expect.
+
+The on-chain suite is `onchain/tests/pafa-vesting.test.ts`. It sends the builders in
+`app/src/solana/program.ts` at the compiled `.so` inside LiteSVM. `solana-test-validator` has no
+RPC to overwrite `Clock.unix_timestamp`, so the 14-day cliff and the Oct-1 waiver reset are warped
+in-process; `anchor test` still builds, deploys to a local validator, then runs that suite.
 
 ## Not verified — this is where the real work is
 
-**Nothing on-chain has ever executed.** The sandbox this was built in blocks outbound Solana RPC and
-Jupiter at the network-policy level (403 at the proxy's CONNECT, before reaching the host), so the
-devnet path is written, typechecked and reviewed but has never run against a cluster. Treat all of
-the following as unproven:
+Local execution is proven. Nothing has been sent to a public cluster, and the two live services
+have never been configured:
 
-1. **`anchor build` and deploy.** The program only ever went through `cargo check`/`cargo test` on
-   the host target — it has never been compiled to SBF. Expect to fix toolchain-version friction
-   before anything deploys. Anchor 0.31.1 is what the code targets.
-2. **Every instruction, end to end.** `initialize_config`, `init_user`, `record_purchase`,
-   `waive_lot`, `release_lot`. Worth writing real Anchor integration tests against a local validator
-   (`anchor test`) before bothering with devnet — faster loop, and `solana-test-validator` lets you
-   warp the clock to exercise the 14-day cliff, which you can't do on devnet.
-3. **The hand-rolled instruction encoding** in `app/src/solana/program.ts`. This is the highest-risk
-   file. It encodes Anchor's wire format directly instead of using a generated IDL: discriminators,
-   argument order, and — most importantly — **account-meta order, which must match the field order
-   of each `#[derive(Accounts)]` struct exactly**. A mismatch fails at runtime, not compile time.
-   `assertDiscriminators()` runs in dev and catches stale discriminators, but nothing checks meta
-   order. If you'd rather not carry that risk: run `anchor build`, then swap in
-   `@coral-xyz/anchor` with the generated IDL from `onchain/target/idl/pafa_vesting.json`. That's a
-   legitimate simplification, not a regression.
-4. **Privy.** The SDK is wired against the real API (`useSolanaWallets`, `useSignTransaction` from
+1. **Devnet deploy.** `anchor deploy --provider.cluster devnet`, then `setup:devnet` and `settle`.
+   `app/.env.local` is gitignored and did not travel with this repo — copy `app/.env.example`.
+2. **Privy.** The SDK is wired against the real API (`useSolanaWallets`, `useSignTransaction` from
    `@privy-io/react-auth/solana`, embedded Solana wallet created on login), but with no app id set
    it has never actually run. Set `VITE_PRIVY_APP_ID` and the mock provider is bypassed entirely.
-5. **Jupiter quotes.** Mainnet-only, so devnet always takes the synthetic-price path. The live-quote
+3. **Jupiter quotes.** Mainnet-only, so devnet always takes the synthetic-price path. The live-quote
    branch in `app/src/solana/jupiter.ts` is unexercised.
 
 ## Things that will bite you
 
+- **`anchor keys sync` rewrote `declare_id!`.** It is now `6NHpvq6rD1xrCAxdcV4wu9BH3tBCvZD12qHs5PTyisDj`, matching the keypair in `target/deploy/` (gitignored). After a fresh clone, run `anchor keys sync` before `anchor build` or the validator deploy will disagree with `declare_id!`. LiteSVM tests load the `.so` at the IDL address, so they still pass without the keypair.
+- **SBF Cargo is 1.84** (platform-tools v1.51). Several crates have since shipped edition2024 manifests that that Cargo cannot parse. The lockfile is pinned; don't `cargo update` without re-running `anchor build`. Pins and rationale are in `onchain/Cargo.toml`.
+- **Anchor CLI is 0.32.1, crate is 0.31.1.** Build and test work. AVM cannot install 0.31.1 on this machine, so `Anchor.toml` pins the CLI at 0.32.1 to stop it retrying. Expect a version-mismatch warning on every `anchor` invocation.
+- **Cursor sets `CARGO_TARGET_DIR` to a sandbox cache.** `anchor test` then drops the `.so` somewhere `target/deploy/` isn't. Point it at the workspace: `CARGO_TARGET_DIR="$(pwd)/target" anchor test`.
 - **`app/.env.local` is gitignored and did not travel with this repo.** Copy `app/.env.example` and
   fill it in. The devnet RPC URL in particular carries an API key — keep it out of commits.
 - **Devnet has no Jupiter and no real xStock mints.** `onchain/scripts/setup-devnet.ts` creates
@@ -76,19 +77,25 @@ the following as unproven:
 - **Two copies of the vesting rules**, in `app/src/domain/vesting.ts` and
   `onchain/programs/pafa-vesting/src/lib.rs`. They're deliberately kept in step. Change one, change
   the other, or the UI will lie about what the chain will do.
-- **The Tweaks panel changes `vestingDays` at runtime**, which is why countdowns derive from
-  `earnedAt + vestingDays` rather than the stored `unlockAt` (see `effectiveUnlockAt`). There's a
-  regression check for this in the smoke test — a negative `stroke-dasharray` was the original
-  symptom.
+- **Countdowns derive from `earnedAt + vestingDays`**, not the stored `unlockAt` (see
+  `effectiveUnlockAt`). The Tweaks panel used to change `vestingDays` at runtime and a shorter
+  period drove ring progress negative, producing an invalid `stroke-dasharray`. The panel is gone
+  and the economics are now fixed at `DEFAULT_ECONOMICS`, but keep the derivation — it's what makes
+  the geometry safe if the values ever become adjustable again.
+- **`app/.npmrc` sets `legacy-peer-deps=true`, and the build needs it.**
+  `@privy-io/react-auth` imports `getTransactionDecoder`, `getTransferSolInstruction` and
+  `findAssociatedTokenPda` from `@solana/kit`, `@solana-program/system` and `@solana-program/token`.
+  Those are optional peers, so they aren't installed transitively, and Rollup fails to link the
+  Privy chunk without them. They're pinned to the Kit v2 line Privy targets
+  (`kit@2.3.0`, `system@0.7.0`, `token@0.5.0`); the current majors want Kit v8 and npm's strict
+  peer check rejects the tree, hence the flag. Don't bump them without re-running `npm run build`.
 
 ## Suggested order
 
-1. `anchor build` → `anchor test` against a local validator. Get instruction-level coverage there,
-   including a clock-warp test for the 14-day cliff and one for the month-rollover waiver reset.
-2. Deploy to devnet, run `setup:devnet`, run `settle`, then drive the app's hero flow and confirm a
+1. Deploy to devnet, run `setup:devnet`, run `settle`, then drive the app's hero flow and confirm a
    real signature lands in the receipt card on the Earned screen.
-3. Add a Privy app id and confirm the embedded wallet signs `release_lot`.
-4. Extend `app/tests/smoke.mjs` to cover the on-chain path once it's real — it currently asserts
+2. Add a Privy app id and confirm the embedded wallet signs `release_lot`.
+3. Extend `app/tests/smoke.mjs` to cover the on-chain path once it's real — it currently asserts
    `Not settled`, which will need to become a signature assertion.
 
 ## Deliberate deviation from the design

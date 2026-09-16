@@ -67,6 +67,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$4.83',
     now: '$4.91',
     brandName: 'Nike',
+    signature: '3jjWLoz3uYNL6bkaNxzKE42jcszGCQm3swScMGUGLBAjjQZHwU2orNSUXrX7j71psqwvycpyq86RLcH5nJBSJ89v',
+    onChain: false,
   },
   {
     id: 'tx-sbux',
@@ -80,6 +82,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$3.90',
     now: '$3.86',
     brandName: 'Starbucks',
+    signature: '4F1WJ99xmNKdxrvDEdf4o98mRpEESgxdj9vUCfsrstcFDetZwJPFSSjTAoLQSDCknc822UXkRS6J1Ax5MLtn82WC',
+    onChain: false,
   },
   {
     id: 'tx-grab',
@@ -93,6 +97,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$1.05',
     now: '$1.09',
     brandName: 'Grab',
+    signature: 'C5mku2EbPD2GacbMRpfMDkGhvK9gaQp82o3EQDJFrT7DyvPkLhg9aAbSoGN9Jrx3VGw9WHvkBZNEr5CHCEg9C9A',
+    onChain: false,
   },
   {
     id: 'tx-aapl',
@@ -106,6 +112,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$12.45',
     now: '$12.63',
     brandName: 'Apple',
+    signature: 'NFbpyjSbN3uVe2dfV9YDL1DuJYqasidpJMFxEBspJTyedx364FqZdrH3wrnYSCYg3k1TbkPoSkwSiX2rkyL4sBU',
+    onChain: false,
   },
   {
     id: 'tx-amzn',
@@ -119,6 +127,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$4.21',
     now: '$4.40',
     brandName: 'Amazon',
+    signature: '2oqRv5YG7VLrw5R3XReMEaQ3pLMxM1xCnzCB2jvszhgP5uXv7MfQ1YNHTL7FquDJF9f5ezC4dSCz9XnGAt5LCDVd',
+    onChain: false,
   },
   {
     id: 'tx-mcd',
@@ -132,6 +142,8 @@ export const SEED_TRANSACTIONS: Omit<Transaction, 'status'>[] = [
     fill: '$0.95',
     now: '$0.96',
     brandName: "McDonald's",
+    signature: '3V8hu9G6yBde6ojsGSmZWq9X4XFuLHcuYJomR1ziGrZW34HweNwNY4X4xmGdXH5zTmavbYeVfuby8jnF1kqvTurB',
+    onChain: false,
   },
 ];
 

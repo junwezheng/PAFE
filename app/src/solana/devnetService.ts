@@ -104,8 +104,10 @@ export class DevnetService implements SolanaService {
         }),
       });
 
-      if (!res.ok) throw new Error(`settlement service returned ${res.status}`);
-      const body = (await res.json()) as { signature: string; lotIndex?: number };
+      const body = (await res.json()) as { signature?: string; lotIndex?: number; error?: string };
+      if (!res.ok || !body.signature) {
+        throw new Error(body.error ?? `settlement service returned ${res.status}`);
+      }
       const lotIndex = body.lotIndex ?? nextIndex;
 
       return {
