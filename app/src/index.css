@@ -1,0 +1,118 @@
+/* Global shell + the exact keyframes the Claude Design prototype used. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #050509;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #f2f2f7;
+}
+
+a {
+  color: #9945ff;
+}
+a:hover {
+  color: #14f195;
+}
+
+@keyframes pafaScan {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(186px);
+    opacity: 0;
+  }
+}
+
+@keyframes pafaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pafaGlow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes pafaRise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pafaPop {
+  0% {
+    transform: scale(0.72);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Stage: device frame centred on desktop, edge-to-edge on a real phone. */
+.pafa-stage {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  padding: 40px 24px;
+  background: radial-gradient(1200px 700px at 50% -10%, rgba(153, 69, 255, 0.1), transparent 70%), #050509;
+}
+
+@media (max-width: 900px) {
+  .pafa-stage {
+    padding: 0;
+    gap: 0;
+    align-items: stretch;
+    background: #06060b;
+  }
+  .pafa-stage .pafa-tweaks {
+    display: none;
+  }
+  /* Drop the bezel and fill the viewport on phones. */
+  .pafa-stage .pafa-device {
+    width: 100% !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}

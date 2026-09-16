@@ -1,0 +1,15 @@
+node_modules/
+dist/
+target/
+.DS_Store
+
+# Secrets — never commit. RPC URLs carry API keys.
+.env
+.env.local
+.env.*.local
+*.keypair.json
+onchain/.keys/
+
+# Build metadata
+*.tsbuildinfo
+.anchor/
