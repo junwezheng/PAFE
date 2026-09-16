@@ -1,22 +1,24 @@
 [toolchain]
-anchor_version = "0.31.1"
+# Crate is still anchor-lang 0.31.1; CLI 0.32.1 is what is installed.
+# Pinning the CLI here stops AVM from trying (and failing) to fetch 0.31.1.
+anchor_version = "0.32.1"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.devnet]
-pafa_vesting = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+pafa_vesting = "6NHpvq6rD1xrCAxdcV4wu9BH3tBCvZD12qHs5PTyisDj"
 
 [programs.localnet]
-pafa_vesting = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+pafa_vesting = "6NHpvq6rD1xrCAxdcV4wu9BH3tBCvZD12qHs5PTyisDj"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "npx tsx --test tests/*.test.ts"

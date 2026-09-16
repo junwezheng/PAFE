@@ -16,7 +16,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("6NHpvq6rD1xrCAxdcV4wu9BH3tBCvZD12qHs5PTyisDj");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const USER_SEED: &[u8] = b"user";
