@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DAY_MS, money, pct, shares as sharesStr, signedPct } from '../lib/format';
 import { brandByKey } from '../domain/brands';
 import { tierState, type Perk, type Tier } from '../domain/tiers';
-import { crossingNote, isReleasable, lotCountdown, vestingView } from '../domain/vesting';
+import { crossingNote, isReleasable, lotCountdown, sellableShares, vestingView } from '../domain/vesting';
 import {
   DEMO_PURCHASE,
   NEARBY,
@@ -13,9 +13,19 @@ import {
   seedLots,
 } from '../domain/mockData';
 import { DEFAULT_ECONOMICS, monthKeyOf } from '../domain/types';
-import type { Economics, Holding, RedeemDraft, Screen, Transaction, VestingLot } from '../domain/types';
+import type {
+  Economics,
+  Holding,
+  RedeemDraft,
+  Screen,
+  SellDraft,
+  Transaction,
+  VestingLot,
+} from '../domain/types';
 import { createSolanaService, type PurchaseResult, type SolanaService } from '../solana/service';
 import { loadXStocks, xstockFor } from '../solana/xstocks';
+import { EMPTY_PRESTOCKS, loadPreStocks, prestockFor, type PreStockRegistry } from '../solana/prestocks';
+import { quoteTokenToUsdc, syntheticSellQuote, type SellQuote } from '../solana/jupiter';
 import type { XStockToken } from '../domain/types';
 import type { PafaWallet } from '../solana/service';
 import { useAuth } from '../auth/context';
@@ -30,11 +40,34 @@ interface Model {
   brandKey: string;
   txId: string | null;
   redeem: RedeemDraft | null;
+  sell: SellDraft | null;
+  /** USDC proceeds from sales, held in-app until withdrawn. */
+  usdc: number;
   holdings: Holding[];
   lots: VestingLot[];
 }
 
 const INITIAL_SCREEN: Screen = 'home';
+
+/** Share amounts are edited to 6 decimals, so compare them at that resolution. */
+const SHARE_EPSILON = 1e-6;
+
+/** Parsed share amount from field text. 0 for anything unusable. */
+function parseShareInput(input: string): number {
+  const n = Number(input);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * A share count as editable field text.
+ *
+ * Rounds *down* to 6 decimals: rounding up would make the "All" button write an
+ * amount fractionally larger than the vested balance and fail its own check.
+ */
+function formatShareInput(shares: number): string {
+  if (!(shares > 0)) return '';
+  return (Math.floor(shares * 1e6) / 1e6).toFixed(6).replace(/\.?0+$/, '');
+}
 
 export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
   const { wallet } = useAuth();
@@ -51,6 +84,8 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
     brandKey: 'NKE',
     txId: null,
     redeem: null,
+    sell: null,
+    usdc: 0,
     holdings: SEED_HOLDINGS.map((h) => ({ ...h })),
     lots: seedLots(Date.now(), DEFAULT_ECONOMICS.vestingDays),
   }));
@@ -67,8 +102,11 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
 
   const [service, setService] = useState<SolanaService | null>(null);
   const [registry, setRegistry] = useState<Map<string, XStockToken>>(new Map());
+  const [prestocks, setPrestocks] = useState<PreStockRegistry>(EMPTY_PRESTOCKS);
   const [receipt, setReceipt] = useState<PurchaseResult | null>(null);
   const [settling, setSettling] = useState(false);
+  const [sellQuote, setSellQuote] = useState<SellQuote | null>(null);
+  const [quotingSell, setQuotingSell] = useState(false);
 
   // ── boot ──────────────────────────────────────────────────
   useEffect(() => {
@@ -82,7 +120,12 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
 
   useEffect(() => {
     loadXStocks().then(setRegistry).catch(() => setRegistry(new Map()));
+    loadPreStocks().then(setPrestocks).catch(() => setPrestocks(EMPTY_PRESTOCKS));
   }, []);
+
+  // Live PreStocks marks, overlaid on the seeded positions. Kept out of `model`
+  // so a price tick can never clobber a share count the user just changed.
+  const holdings = useMemo(() => applyLivePrices(model.holdings, prestocks), [model.holdings, prestocks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,12 +318,137 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
     [go],
   );
 
+  // ── sell to USDC ──────────────────────────────────────────
+  const vestedOf = useCallback(
+    (brandKey: string) => {
+      const holding = holdings.find((h) => h.key === brandKey);
+      return holding ? sellableShares(brandKey, holding.shares, model.lots) : 0;
+    },
+    [holdings, model.lots],
+  );
+
+  const startSell = useCallback(
+    (brandKey: string) => {
+      setModel((m) => ({ ...m, sell: { brandKey, input: formatShareInput(vestedOf(brandKey)) } }));
+      setSellQuote(null);
+      go('sell');
+    },
+    [go, vestedOf],
+  );
+
+  const setSellInput = useCallback((input: string) => {
+    // Digits and one decimal point only. Anything else is a typo, not an edit —
+    // and an in-progress entry like `0.` has to be allowed through, so the
+    // amount is validated from the parsed value rather than the text.
+    if (!/^\d*\.?\d*$/.test(input)) return;
+    setModel((m) => (m.sell ? { ...m, sell: { ...m.sell, input } } : m));
+  }, []);
+
+  /** Fill the amount field from a portion of the vested balance. */
+  const setSellPortion = useCallback(
+    (portion: number) => {
+      const draft = model.sell;
+      if (!draft) return;
+      const input = formatShareInput(vestedOf(draft.brandKey) * portion);
+      setModel((m) => (m.sell ? { ...m, sell: { ...m.sell, input } } : m));
+    },
+    [model.sell, vestedOf],
+  );
+
+  /**
+   * Re-quote whenever the draft changes, and abort the previous request so a
+   * slow quote for 25% can't land after the user has moved the slider to 100%.
+   */
+  useEffect(() => {
+    const draft = model.sell;
+    if (!draft) {
+      setSellQuote(null);
+      return;
+    }
+    const holding = holdings.find((h) => h.key === draft.brandKey);
+    if (!holding) return;
+
+    // Don't quote an amount we'd refuse to fill: over-selling the vested balance
+    // is an error the screen reports, not a trade to price.
+    const shares = parseShareInput(draft.input);
+    if (shares <= 0 || shares > sellableShares(draft.brandKey, holding.shares, model.lots) + SHARE_EPSILON) {
+      setSellQuote(null);
+      return;
+    }
+
+    const token = prestockFor(draft.brandKey, prestocks) ?? xstockFor(draft.brandKey, registry);
+    const controller = new AbortController();
+    setQuotingSell(true);
+
+    // No mint or no decimals means no honest quote, so the sale is priced at the
+    // displayed mark and labelled as such rather than silently faked as live.
+    const atMark = () =>
+      syntheticSellQuote({
+        inputSymbol: holding.ticker,
+        shares,
+        pricePerShare: holding.price,
+        via: 'priced at mark — no route on this cluster',
+      });
+
+    const pending =
+      token?.mint && token.decimals != null
+        ? quoteTokenToUsdc({
+            inputMint: token.mint,
+            inputSymbol: token.symbol,
+            shares,
+            inputDecimals: token.decimals,
+            signal: controller.signal,
+          }).then((quote) => quote ?? atMark())
+        : Promise.resolve(atMark());
+
+    pending
+      .then((quote) => {
+        if (!controller.signal.aborted) setSellQuote(quote);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setQuotingSell(false);
+      });
+
+    return () => controller.abort();
+  }, [model.sell, model.lots, holdings, prestocks, registry]);
+
+  const confirmSell = useCallback(() => {
+    const draft = model.sell;
+    if (!draft || !sellQuote) return;
+    const { inputShares, outputUsd } = sellQuote;
+
+    setModel((m) => ({
+      ...m,
+      usdc: +(m.usdc + outputUsd).toFixed(2),
+      holdings: m.holdings.map((h) => {
+        if (h.key !== draft.brandKey) return h;
+        const remaining = Math.max(0, h.shares - inputShares);
+        return { ...h, shares: +remaining.toFixed(6), value: +(remaining * h.price).toFixed(2) };
+      }),
+    }));
+    go('sold');
+  }, [model.sell, sellQuote, go]);
+
   const toggleBalance = useCallback(() => setModel((m) => ({ ...m, hideBal: !m.hideBal })), []);
 
   // ── derived view model ────────────────────────────────────
   const vm = useMemo(
-    () => buildViewModel({ model, econ, anim, view, registry, receipt, settling, service }),
-    [model, econ, anim, view, registry, receipt, settling, service],
+    () =>
+      buildViewModel({
+        model,
+        holdings,
+        econ,
+        anim,
+        view,
+        registry,
+        prestocks,
+        receipt,
+        settling,
+        service,
+        sellQuote,
+        quotingSell,
+      }),
+    [model, holdings, econ, anim, view, registry, prestocks, receipt, settling, service, sellQuote, quotingSell],
   );
 
   return {
@@ -297,6 +465,10 @@ export function usePafa(econ: Economics = DEFAULT_ECONOMICS) {
       openBrand,
       openTx,
       startRedeem,
+      startSell,
+      setSellInput,
+      setSellPortion,
+      confirmSell,
       toggleBalance,
     },
   };
@@ -309,20 +481,39 @@ export type PafaViewModel = ReturnType<typeof buildViewModel>;
 // View model — mirrors the prototype's renderVals()
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Overlay live PreStocks marks on the seeded positions.
+ *
+ * Only `price` and `value` move. The API publishes no 24h change, so `chg`
+ * keeps its seeded value rather than displaying a number we invented.
+ */
+function applyLivePrices(holdings: Holding[], prestocks: PreStockRegistry): Holding[] {
+  if (!prestocks.live) return holdings;
+  return holdings.map((h) => {
+    const price = prestockFor(h.key, prestocks)?.tokenPrice;
+    if (!price) return h;
+    return { ...h, price, value: +(h.shares * price).toFixed(2) };
+  });
+}
+
 function buildViewModel(args: {
   model: Model;
+  holdings: Holding[];
   econ: Economics;
   anim: boolean;
   view: ReturnType<typeof vestingView>;
   registry: Map<string, XStockToken>;
+  prestocks: PreStockRegistry;
   receipt: PurchaseResult | null;
   settling: boolean;
   service: SolanaService | null;
+  sellQuote: SellQuote | null;
+  quotingSell: boolean;
 }) {
-  const { model, econ, anim, view, registry, receipt, settling, service } = args;
+  const { model, econ, anim, view, registry, prestocks, receipt, settling, service, sellQuote, quotingSell } = args;
   const now = Date.now();
 
-  const holdings = model.holdings.slice().sort((a, b) => b.value - a.value);
+  const holdings = args.holdings.slice().sort((a, b) => b.value - a.value);
   const total = holdings.reduce((sum, h) => sum + h.value, 0);
   const pendingValue = model.lots.reduce((sum, l) => sum + l.value, 0);
   const waived = view.waived;
@@ -341,6 +532,7 @@ function buildViewModel(args: {
       tierNote: ts.nextNote,
       tierName: ts.tierName,
       xstock: xstockFor(h.key, registry),
+      prestock: prestockFor(h.key, prestocks),
     };
   };
 
@@ -469,6 +661,31 @@ function buildViewModel(args: {
   const earnSharesNum = earnValue / nikeHolding.price;
   const spendAfter = model.spend + (model.paid ? 0 : gross);
 
+  // ── sell ──────────────────────────────────────────────────
+  const draft = model.sell;
+  const sellHolding = draft ? holdings.find((h) => h.key === draft.brandKey) : undefined;
+  const sellTicker = sellHolding?.ticker ?? '';
+  const sellable = sellHolding ? sellableShares(sellHolding.key, sellHolding.shares, model.lots) : 0;
+  const sellInput = draft?.input ?? '';
+  const sellShares = parseShareInput(sellInput);
+  const overSelling = sellShares > sellable + SHARE_EPSILON;
+  const sellError = overSelling ? `Only ${sharesStr(sellable, sellTicker)} is vested` : null;
+  const lockedShares = sellHolding ? sellHolding.shares - sellable : 0;
+  const sellMark = sellHolding?.price ?? 0;
+  const nearly = (a: number, b: number) => Math.abs(a - b) <= SHARE_EPSILON;
+
+  // Tiers are unlocked by held value, so a sale can silently revoke a perk.
+  // Work out the tier on the far side of the trade and warn before it happens.
+  const tierBefore = sellHolding ? tierState(sellHolding) : null;
+  const valueAfterSell = Math.max(0, (sellHolding?.value ?? 0) - sellShares * sellMark);
+  const tierAfter = sellHolding ? tierState({ key: sellHolding.key, value: valueAfterSell }) : null;
+  const losesTier = !!tierBefore && !!tierAfter && tierAfter.idx < tierBefore.idx;
+
+  // The issuer's mark and the executable price diverge on thin pre-IPO pools.
+  // Surface the gap instead of letting the payout look like a rounding bug.
+  const markGapPct =
+    sellQuote && sellMark > 0 ? ((sellQuote.pricePerShare - sellMark) / sellMark) * 100 : 0;
+
   const titles: Record<Screen, string> = {
     home: 'PAFE',
     stocks: 'Stocks',
@@ -478,6 +695,8 @@ function buildViewModel(args: {
     brand: brandHolding.name,
     redeem: 'Redeem',
     redeemed: 'Redeemed',
+    sell: 'Sell',
+    sold: 'Sold',
     vesting: 'Vesting',
     benefits: 'Perks',
     card: 'Card',
@@ -589,6 +808,38 @@ function buildViewModel(args: {
 
     // redeem
     redeem: model.redeem ?? { brand: '', tier: '', title: '', note: '', req: '', held: '', code: '' },
+
+    // sell
+    usdcStr: money(model.usdc),
+    hasUsdc: model.usdc > 0,
+    sell: {
+      name: sellHolding?.name ?? '',
+      mono: sellHolding?.mono ?? '',
+      ticker: sellTicker,
+      input: sellInput,
+      halfActive: sellable > 0 && nearly(sellShares, Math.floor((sellable / 2) * 1e6) / 1e6),
+      allActive: sellable > 0 && nearly(sellShares, Math.floor(sellable * 1e6) / 1e6),
+      error: sellError,
+      preIpo: !!sellHolding && !!prestockFor(sellHolding.key, prestocks),
+      tokenSymbol: sellQuote?.inputSymbol ?? sellTicker,
+      sellableStr: sharesStr(sellable, sellTicker),
+      sharesStr: sharesStr(sellShares, sellTicker),
+      lockedStr: lockedShares > 0.0005 ? sharesStr(lockedShares, sellTicker) : null,
+      markStr: money(sellMark),
+      quoting: quotingSell,
+      canSell: sellShares > 0 && !overSelling && !!sellQuote && !quotingSell,
+      nothingToSell: sellable <= 0,
+      proceedsStr: sellQuote ? money(sellQuote.outputUsd) : '—',
+      fillStr: sellQuote ? money(sellQuote.pricePerShare) : '—',
+      via: sellQuote?.via ?? 'quoting…',
+      live: sellQuote?.live ?? false,
+      routeColor: sellQuote?.live ? '#14F195' : '#FFB84D',
+      impactStr:
+        sellQuote?.priceImpactPct != null ? pct(Math.abs(sellQuote.priceImpactPct) * 100) : null,
+      markGapStr: Math.abs(markGapPct) >= 1 ? signedPct(markGapPct) : null,
+      valueAfterStr: money(valueAfterSell),
+      tierWarning: losesTier && tierBefore ? `Drops you out of ${tierBefore.tierName}` : null,
+    },
 
     // chain
     chainMode: service?.mode ?? 'simulated',

@@ -59,6 +59,21 @@ export function isReleasable(
   return view.waived && lot.monthKey === view.monthKey;
 }
 
+/**
+ * Shares of one brand that can actually be sold.
+ *
+ * Escrowed lots are excluded by rule 1: until a lot vests its tokens sit in the
+ * lot PDA, so a sale would fail on-chain even if the UI offered it. Note this
+ * is deliberately *not* how tier progress is measured — rule 4 still counts
+ * locked stock toward benefits.
+ */
+export function sellableShares(brandKey: string, holdingShares: number, lots: VestingLot[]): number {
+  const locked = lots
+    .filter((lot) => lot.key === brandKey && !lot.released)
+    .reduce((sum, lot) => sum + lot.shares, 0);
+  return Math.max(0, holdingShares - locked);
+}
+
 /** Ring geometry + countdown copy for one vesting lot. */
 export function lotCountdown(lot: VestingLot, econ: Economics, now: number = Date.now()) {
   const total = econ.vestingDays * DAY_MS;

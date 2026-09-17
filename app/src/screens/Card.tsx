@@ -97,6 +97,12 @@ export function CardScreen({ vm, actions }: ScreenProps) {
         <Line label="Cashback rate" value={vm.rateStr} valueColor={C.mint} />
         <Line label="Lifetime stock earned" value="$186.42" style={{ marginTop: 14 }} />
         <Line
+          label="USDC from sales"
+          value={vm.usdcStr}
+          style={{ marginTop: 14 }}
+          valueColor={vm.hasUsdc ? C.mint : undefined}
+        />
+        <Line
           label="Wallet"
           value={wallet ? shortAddress(wallet.address, 4, 4) : 'Not connected'}
           style={{ marginTop: 14 }}

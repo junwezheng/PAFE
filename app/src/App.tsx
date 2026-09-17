@@ -10,6 +10,7 @@ import { Stocks } from './screens/Stocks';
 import { Pay, Review } from './screens/Pay';
 import { Earned } from './screens/Earned';
 import { Brand, Redeem, Redeemed } from './screens/Brand';
+import { Sell, Sold } from './screens/Sell';
 import { Vesting } from './screens/Vesting';
 import { Benefits } from './screens/Benefits';
 import { Activity, CardScreen } from './screens/Card';
@@ -147,6 +148,10 @@ function ScreenSwitch({ pafa }: { pafa: ReturnType<typeof usePafa> }) {
       return <Redeem {...props} />;
     case 'redeemed':
       return <Redeemed {...props} />;
+    case 'sell':
+      return <Sell {...props} />;
+    case 'sold':
+      return <Sold {...props} />;
     case 'vesting':
       return <Vesting {...props} />;
     case 'benefits':

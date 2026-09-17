@@ -11,10 +11,16 @@ export interface Brand {
   ticker: string;
   /**
    * The xStocks (Backed Finance) symbol we'd route into, e.g. `NKEx`.
-   * `null` when the brand is not a listed public equity we can tokenise
-   * (e.g. a private company), so cashback has to fall back to a basket.
+   * `null` when the brand is not a listed public equity we can tokenise —
+   * either a private company (see `prestockSymbol`) or a listing Backed
+   * doesn't issue a token for, in which case cashback falls back to a basket.
    */
   xstockSymbol: string | null;
+  /**
+   * The PreStocks symbol for private companies, e.g. `OPENAI`. Mutually
+   * exclusive with `xstockSymbol`: a company is either listed or it isn't.
+   */
+  prestockSymbol?: string;
 }
 
 /** Live listing status for an xStock, resolved at runtime from a token list. */
@@ -26,6 +32,24 @@ export interface XStockToken {
   /** Base58 mint address. Null until resolved from a token list / devnet setup. */
   mint: string | null;
   decimals: number;
+  status: ListingStatus;
+}
+
+/**
+ * A PreStocks token — tokenised pre-IPO equity, resolved from their API.
+ *
+ * `decimals` comes from Jupiter's token list rather than the PreStocks API,
+ * which doesn't publish it. It stays `null` until resolved, and a sale without
+ * it is priced synthetically instead of quoted: guessing the exponent would
+ * misquote the trade by orders of magnitude.
+ */
+export interface PreStockToken {
+  symbol: string;
+  /** Base58 SPL mint from the API. Null when the symbol didn't resolve. */
+  mint: string | null;
+  /** USD per token, the issuer's `tokenPrice`. Null when unresolved. */
+  tokenPrice: number | null;
+  decimals: number | null;
   status: ListingStatus;
 }
 
@@ -120,6 +144,8 @@ export type Screen =
   | 'brand'
   | 'redeem'
   | 'redeemed'
+  | 'sell'
+  | 'sold'
   | 'vesting'
   | 'benefits'
   | 'card'
@@ -135,6 +161,18 @@ export interface RedeemDraft {
   req: string;
   held: string;
   code: string;
+}
+
+/** A sale in flight. The USDC it pays comes from a route quote, not from here. */
+export interface SellDraft {
+  brandKey: string;
+  /**
+   * Share count as raw field text, and the single source of truth for the
+   * amount — the percentage buttons just write into it. Kept as a string so a
+   * half-typed entry like `0.` survives a re-render instead of being
+   * normalised out from under the cursor.
+   */
+  input: string;
 }
 
 /** Returns `year * 12 + month` for a date — the monthly vesting bucket. */

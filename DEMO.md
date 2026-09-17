@@ -18,8 +18,12 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-That's the whole setup. With no configuration the app runs **fully offline** in simulated mode:
-mock auth, simulated settlement, no network calls. Every screen and the complete hero flow work.
+That's the whole setup. With no configuration the app runs in simulated mode: mock auth, simulated
+settlement, no wallet and no RPC. Every screen and the complete hero flow work.
+
+Two read-only price feeds are the exception to "no network": the PreStocks listing and Jupiter
+quotes. Both fail soft — positions keep their seeded prices and a sale is priced at the mark and
+labelled as such — so the demo still works with the network off.
 
 Open it on a phone-width viewport and the bezel drops away and it fills the screen; on desktop it
 renders centred inside an iPhone frame.
@@ -45,6 +49,44 @@ Implemented identically in `app/src/domain/vesting.ts` and `onchain/programs/paf
    lot PDA belongs to the user.
 
 Cashback is **3.5%**. Tiers unlock at **$100 / $500 / $1,000** of that brand's stock held.
+
+## Two kinds of tokenised stock
+
+| | Listed brands | Private brands |
+|---|---|---|
+| Issuer | xStocks (Backed Finance) | PreStocks |
+| Brands | Apple, Nike, Starbucks, Amazon, Uber, Netflix, McDonald's, Airbnb | OpenAI, Anthropic |
+| Mints | `VITE_XSTOCK_MINTS` or `public/xstocks.json` | resolved from the PreStocks API |
+| Prices | seeded in the demo | live `tokenPrice` from the API |
+
+Neither issuer's mint addresses are hardcoded — a wrong base58 address routes real value to the
+wrong token, so both are resolved at runtime and a symbol that doesn't resolve is reported as such.
+
+PreStocks matters because it covers companies with no listing to tokenise. Paying for ChatGPT Plus
+or Claude Pro can pay cashback in OpenAI or Anthropic exposure, which no public equity offers.
+`app/src/solana/prestocks.ts` reads their listing for the mint and price, and Jupiter's token list
+for decimals (PreStocks doesn't publish them, and guessing the exponent would misprice a trade by
+orders of magnitude). Pre-IPO positions are badged **PRE-IPO** everywhere they appear.
+
+The API sends no CORS header, so the browser can't call it directly. `/api/prestocks` is proxied
+instead — by `app/vercel.json` in production and Vite's `server`/`preview` proxy locally — which
+keeps the app a static build with no server of its own.
+
+## Selling back to USDC
+
+Any holding can be sold for USDC from its brand screen (`app/src/screens/Sell.tsx`).
+
+1. **Only vested stock is sellable.** Escrowed lots sit in the program's lot PDA, so a sale of them
+   would fail on-chain; the screen says how much is still vesting instead of offering it.
+2. **The amount is editable** — type a share count, or fill it from `50%` / `All`. Entering more
+   than the vested balance is refused rather than silently clamped.
+3. **The payout is always quoted, never derived from the mark.** On thin pre-IPO pools the issuer's
+   mark and the executable price diverge sharply — OpenAI has traded ~50% above mark — so the screen
+   shows the fill price, the route, the price impact, and the gap against the mark.
+4. **Selling can revoke a perk.** Tiers are unlocked by held value, so the screen names the tier a
+   sale drops before you confirm it.
+
+Proceeds land in an in-app USDC balance, shown on the Card screen.
 
 The economics come from `DEFAULT_ECONOMICS` in `app/src/domain/types.ts` and are stored on-chain in
 the program `Config`.
@@ -111,7 +153,7 @@ Copy `app/.env.example` to `app/.env.local` and fill in `VITE_SOLANA_RPC`, `VITE
 cd onchain && cargo test --lib      # program logic, incl. calendar-month math
 cd app && npm run typecheck
 cd app && npm run build && npm run preview &
-cd app && npm run test:smoke        # 22 checks: drives the whole flow in a browser
+cd app && npm run test:smoke        # 27 checks: drives the whole flow in a browser
 ```
 
 The smoke test needs a Chromium: `npx playwright install chromium`.
@@ -122,9 +164,12 @@ of the simulated result the assertions expect.
 
 ## Deploying the demo
 
-The app is a static SPA — no server, no API, and no router, so any static host works. On Vercel:
-set the **root directory to `app`**; the build command (`npm run build`) and output directory
-(`dist`) are detected automatically.
+The app is a static SPA — no server and no router, so any static host works. On Vercel: set the
+**root directory to `app`**; the build command (`npm run build`) and output directory (`dist`) are
+detected automatically, and `app/vercel.json` adds the one rewrite that proxies `/api/prestocks`.
+
+On a host other than Vercel, reproduce that rewrite. Without it the PreStocks fetch fails on CORS,
+which is handled — pre-IPO positions just fall back to their seeded prices.
 
 **Do not set any `VITE_*` variables on the host.** Vite inlines them into the client bundle at
 build time. With none set the app runs in mock-auth, simulated-settlement mode, which is what a
@@ -163,5 +208,18 @@ keeps `anchor build` off the app's critical path. The discriminators are re-deri
   wrong token, so "none" is the safer default.
 - **Swap execution is modelled, not performed.** `record_purchase` takes an already-acquired token
   amount; a production build would CPI into Jupiter inside the same transaction.
+- **Sells are quoted for real but not submitted.** The route, fill price and impact come from a live
+  Jupiter quote, and the liquidity is genuine — OpenAI routes to USDC through Manifest and Meteora
+  with real depth. Confirming a sale credits the in-app USDC balance without signing a swap, so no
+  tokens move. Wiring it up means requesting the swap transaction from Jupiter and signing it with
+  the user's wallet; nothing in the escrow program needs to change, because vested tokens already
+  belong to the user.
+- **The issuer mark and the market can disagree badly.** Two of the eight PreStocks tokens are far
+  from their published `tokenPrice` — OpenAI has quoted ~50% above it and SpaceX ~5x, the latter
+  looking more like a stale pool or a share-unit mismatch than a real premium. Holdings are valued
+  at the mark and sales at the quote, and the gap is shown rather than hidden. Don't treat either
+  number as the fair value of the underlying company without checking the pool.
+- **The in-app USDC balance is a number, not an account.** There's no withdrawal path, and it resets
+  on reload like the rest of the demo state.
 - **The settlement service has no auth**, no idempotency key and no rate limiting. It exists to close
   the demo loop, not to be deployed.

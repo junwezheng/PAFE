@@ -1,6 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+/**
+ * PreStocks serves no `Access-Control-Allow-Origin`, so the browser can't call
+ * it directly. Dev and preview proxy `/api/prestocks` exactly as the Vercel
+ * rewrite does in production (see `vercel.json`), keeping the app a static
+ * build with no server of its own.
+ */
+const prestocksProxy = {
+  '/api/prestocks': {
+    target: 'https://prestocks.com',
+    changeOrigin: true,
+  },
+};
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -23,5 +36,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    proxy: prestocksProxy,
+  },
+  preview: {
+    proxy: prestocksProxy,
   },
 });

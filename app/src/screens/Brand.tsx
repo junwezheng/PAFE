@@ -1,5 +1,5 @@
 import { C, SORA } from '../theme';
-import { Cta, Eyebrow, Ghost, KeyValue, Mono, ProgressBar, SectionTitle } from '../components/Bits';
+import { Cta, Eyebrow, Ghost, KeyValue, Mono, PreIpoBadge, ProgressBar, SectionTitle } from '../components/Bits';
 import type { ScreenProps } from './types';
 
 /** Brand detail: value held, tier ladder, and the perks each tier unlocks. */
@@ -11,8 +11,11 @@ export function Brand({ vm, actions }: ScreenProps) {
         <Mono size={52} radius={16} fontSize={18} border="rgba(153,69,255,.32)">
           {b.mono}
         </Mono>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: SORA, fontWeight: 600, fontSize: 19, color: C.white }}>{b.name}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: SORA, fontWeight: 600, fontSize: 19, color: C.white }}>{b.name}</span>
+            {b.prestock ? <PreIpoBadge /> : null}
+          </div>
           <div style={{ marginTop: 3, fontSize: 12.5, color: C.gray, fontVariantNumeric: 'tabular-nums' }}>
             {b.ticker} · {b.priceStr} per share
             {b.xstock ? ` · ${b.xstock.symbol}` : ''}
@@ -197,6 +200,29 @@ export function Brand({ vm, actions }: ScreenProps) {
         }}
       >
         Pay at {b.name} to earn more
+      </div>
+
+      <div
+        onClick={() => actions.startSell(b.key)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') actions.startSell(b.key);
+        }}
+        style={{
+          marginTop: 10,
+          padding: 15,
+          borderRadius: 16,
+          border: '1px solid rgba(20,241,149,.34)',
+          textAlign: 'center',
+          fontFamily: SORA,
+          fontWeight: 600,
+          fontSize: 14.5,
+          color: C.mint,
+          cursor: 'pointer',
+        }}
+      >
+        Sell vested {b.ticker} for USDC
       </div>
     </div>
   );

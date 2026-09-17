@@ -36,9 +36,17 @@ await step('sign in', async () => {
 });
 
 // ── home ──
-await step('portfolio total is $1,721.42', async () => {
-  const t = await page.locator('text=/^\\$1,7/').first().textContent();
-  if (!t?.startsWith('$1,7')) throw new Error(`got ${t}`);
+await step('portfolio total exceeds the seeded xStock positions', async () => {
+  // The nine listed positions are seeded at $1,721.42, but the OpenAI and
+  // Anthropic legs are priced from the live PreStocks feed, so a fixed total
+  // would drift with the market. Pre-IPO value only ever adds, so assert the
+  // floor instead.
+  const t = await page
+    .getByText('Portfolio value · USD')
+    .locator('xpath=following::*[starts-with(text(),"$")][1]')
+    .textContent();
+  const total = Number((t ?? '').replace(/[$,]/g, ''));
+  if (!(total > 1721.42)) throw new Error(`got ${t}`);
 });
 await step('vesting banner shows pre-target state', async () => {
   await page.getByText(/September vesting · 14 days/).waitFor({ timeout: 5000 });
@@ -125,6 +133,47 @@ await step('stocks screen shows vested/vesting split', async () => {
   await page.getByText('Holdings').waitFor({ timeout: 5000 });
   await page.getByText('Nothing locked').waitFor({ timeout: 5000 });
 });
+// ── pre-IPO + sell to USDC ──
+await step('pre-IPO holdings are labelled', async () => {
+  const n = await page.getByText('PRE-IPO').count();
+  if (n !== 2) throw new Error(`expected 2 pre-IPO badges, got ${n}`);
+});
+await step('sell amount rejects more than the vested balance', async () => {
+  await page.getByText('OpenAI').first().click();
+  await page.getByText(/Sell vested OPENAI for USDC/).click();
+  const amount = page.getByLabel('Shares of OPENAI to sell');
+  await amount.waitFor({ timeout: 8000 });
+  await amount.fill('99');
+  await page.getByText(/is vested/).waitFor({ timeout: 5000 });
+});
+await step('50% and All fill the amount field', async () => {
+  const amount = page.getByLabel('Shares of OPENAI to sell');
+  await page.getByText('50%', { exact: true }).click();
+  const half = Number(await amount.inputValue());
+  await page.getByText('All', { exact: true }).click();
+  const all = Number(await amount.inputValue());
+  if (!(half > 0 && all > half)) throw new Error(`half=${half} all=${all}`);
+});
+await step('sell vested pre-IPO stock for USDC', async () => {
+  await page.getByText('You receive').waitFor({ timeout: 8000 });
+  // The payout is quoted, so wait for the CTA to stop saying "Quoting…".
+  const cta = page.getByText(/^Sell for \$/);
+  await cta.waitFor({ timeout: 15000 });
+  await cta.click();
+  // Exact: the same screen also has a "See USDC balance" link, and a substring
+  // match would resolve to both and trip strict mode.
+  await page.getByText('USDC balance', { exact: true }).waitFor({ timeout: 8000 });
+});
+await step('USDC balance is non-zero on the card screen', async () => {
+  await page.getByText('See USDC balance').click();
+  await page.getByText('USDC from sales').waitFor({ timeout: 5000 });
+  const t = await page
+    .getByText('USDC from sales')
+    .locator('xpath=following::*[starts-with(text(),"$")][1]')
+    .textContent();
+  if (Number((t ?? '').replace(/[$,]/g, '')) <= 0) throw new Error(`got ${t}`);
+});
+
 await step('card screen', async () => {
   await page.locator('text=Card').last().click();
   await page.getByText('•••• •••• •••• 7362').waitFor({ timeout: 5000 });

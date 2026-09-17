@@ -10,6 +10,9 @@ import type { Brand } from './types';
  *
  * Grab is listed on Nasdaq as GRAB but has no xStock at the time of writing;
  * brands with no live mint fall back to the index basket (see `vesting.ts`).
+ *
+ * `prestockSymbol` covers the other case: companies with no listing at all,
+ * which PreStocks tokenises instead (see `src/solana/prestocks.ts`).
  */
 export const BRANDS: Brand[] = [
   { key: 'AAPL', name: 'Apple', mono: 'AP', ticker: 'AAPL', xstockSymbol: 'AAPLx' },
@@ -21,6 +24,19 @@ export const BRANDS: Brand[] = [
   { key: 'MCD', name: "McDonald's", mono: 'MC', ticker: 'MCD', xstockSymbol: 'MCDx' },
   { key: 'GRAB', name: 'Grab', mono: 'GR', ticker: 'GRAB', xstockSymbol: null },
   { key: 'ABNB', name: 'Airbnb', mono: 'AB', ticker: 'ABNB', xstockSymbol: 'ABNBx' },
+
+  // Private companies. There is no listing to tokenise, so cashback on a
+  // ChatGPT Plus or Claude Pro subscription routes into the PreStocks token
+  // instead — the only way to hold this exposure at all.
+  { key: 'OPENAI', name: 'OpenAI', mono: 'OA', ticker: 'OPENAI', xstockSymbol: null, prestockSymbol: 'OPENAI' },
+  {
+    key: 'ANTHROPIC',
+    name: 'Anthropic',
+    mono: 'AN',
+    ticker: 'ANTHROPIC',
+    xstockSymbol: null,
+    prestockSymbol: 'ANTHROPIC',
+  },
 ];
 
 export const brandByKey = (key: string): Brand | undefined => BRANDS.find((b) => b.key === key);

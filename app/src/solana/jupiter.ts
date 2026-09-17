@@ -81,6 +81,95 @@ export async function quoteUsdcToXStock(params: {
   }
 }
 
+/** What a sale of `inputShares` actually pays out. */
+export interface SellQuote {
+  inputSymbol: string;
+  /** Shares sold. */
+  inputShares: number;
+  /** USDC received. */
+  outputUsd: number;
+  /** USDC per share the route fills at — not necessarily the quoted mark. */
+  pricePerShare: number;
+  via: string;
+  /** True when the numbers came from a real Jupiter quote. */
+  live: boolean;
+  priceImpactPct?: number;
+}
+
+/**
+ * The sell leg: tokenised stock -> USDC. Works for both xStocks and PreStocks,
+ * since both are ordinary SPL mints as far as the aggregator is concerned.
+ *
+ * Always quote before showing a payout. The issuer's mark and the executable
+ * price can diverge sharply on thin pre-IPO pools, so pricing a sale off the
+ * mark would promise a number the route can't fill.
+ */
+export async function quoteTokenToUsdc(params: {
+  inputMint: string;
+  inputSymbol: string;
+  shares: number;
+  inputDecimals: number;
+  slippageBps?: number;
+  signal?: AbortSignal;
+}): Promise<SellQuote | null> {
+  const { inputMint, inputSymbol, shares, inputDecimals, slippageBps = 50, signal } = params;
+  const amount = Math.round(shares * 10 ** inputDecimals);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  try {
+    const url = new URL(QUOTE_ENDPOINT);
+    url.searchParams.set('inputMint', inputMint);
+    url.searchParams.set('outputMint', USDC_MAINNET);
+    url.searchParams.set('amount', String(amount));
+    url.searchParams.set('slippageBps', String(slippageBps));
+
+    const res = await fetch(url, { signal });
+    if (!res.ok) return null;
+
+    const quote = (await res.json()) as {
+      outAmount?: string;
+      priceImpactPct?: string;
+      routePlan?: { swapInfo?: { label?: string } }[];
+    };
+    if (!quote.outAmount) return null;
+
+    const outputUsd = Number(quote.outAmount) / 1e6; // USDC has 6 decimals
+    if (!Number.isFinite(outputUsd) || outputUsd <= 0) return null;
+
+    const labels = (quote.routePlan ?? []).map((r) => r.swapInfo?.label).filter(Boolean);
+
+    return {
+      inputSymbol,
+      inputShares: shares,
+      outputUsd,
+      pricePerShare: outputUsd / shares,
+      via: labels.length ? `Jupiter · ${labels.join(' → ')}` : 'Jupiter',
+      live: true,
+      priceImpactPct: quote.priceImpactPct ? Number(quote.priceImpactPct) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Price a sale from the displayed mark when no aggregator is reachable. */
+export function syntheticSellQuote(params: {
+  inputSymbol: string;
+  shares: number;
+  pricePerShare: number;
+  via: string;
+}): SellQuote {
+  const { inputSymbol, shares, pricePerShare, via } = params;
+  return {
+    inputSymbol,
+    inputShares: shares,
+    outputUsd: shares * pricePerShare,
+    pricePerShare,
+    via,
+    live: false,
+  };
+}
+
 /** Price the leg from a known share price when no aggregator is reachable. */
 export function syntheticRoute(params: {
   outputSymbol: string;

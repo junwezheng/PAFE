@@ -27,6 +27,19 @@ export const SEED_HOLDINGS: Holding[] = [
   { key: 'MCD', name: "McDonald's", ticker: 'MCD', mono: 'MC', shares: 0.31, price: 303.55, value: 94.1, chg: 0.22 },
   { key: 'GRAB', name: 'Grab', ticker: 'GRAB', mono: 'GR', shares: 18.4, price: 4.8, value: 88.3, chg: 3.4 },
   { key: 'ABNB', name: 'Airbnb', ticker: 'ABNB', mono: 'AB', shares: 0.44, price: 140.68, value: 61.9, chg: -0.64 },
+  // Pre-IPO positions. These prices are placeholders: once the PreStocks feed
+  // resolves, `price` and `value` are recomputed from the live `tokenPrice`.
+  { key: 'OPENAI', name: 'OpenAI', ticker: 'OPENAI', mono: 'OA', shares: 0.128, price: 971.64, value: 124.37, chg: 1.94 },
+  {
+    key: 'ANTHROPIC',
+    name: 'Anthropic',
+    ticker: 'ANTHROPIC',
+    mono: 'AN',
+    shares: 0.061,
+    price: 961.25,
+    value: 58.64,
+    chg: 2.63,
+  },
 ];
 
 export function seedLots(now: number, vestingDays: number): VestingLot[] {

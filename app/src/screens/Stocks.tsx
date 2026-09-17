@@ -1,5 +1,5 @@
 import { C, SORA } from '../theme';
-import { Mono, SectionTitle } from '../components/Bits';
+import { Mono, PreIpoBadge, SectionTitle } from '../components/Bits';
 import type { ScreenProps } from './types';
 
 export function Stocks({ vm, actions }: ScreenProps) {
@@ -133,7 +133,10 @@ export function Stocks({ vm, actions }: ScreenProps) {
               {h.mono}
             </Mono>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{h.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{h.name}</span>
+                {h.prestock ? <PreIpoBadge /> : null}
+              </div>
               <div style={{ marginTop: 2, fontSize: 11.5, color: C.gray, fontVariantNumeric: 'tabular-nums' }}>
                 {h.sharesStr} · {h.priceStr}
                 {h.xstock ? ` · ${h.xstock.symbol}` : ''}

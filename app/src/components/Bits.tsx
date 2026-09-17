@@ -204,6 +204,27 @@ export function KeyValue({
   );
 }
 
+/** Marks a holding as tokenised pre-IPO equity rather than a listed xStock. */
+export function PreIpoBadge() {
+  return (
+    <span
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: '.08em',
+        padding: '3px 7px',
+        borderRadius: 99,
+        background: 'rgba(153,69,255,.16)',
+        border: '1px solid rgba(153,69,255,.34)',
+        color: C.lilacSoft,
+        flexShrink: 0,
+      }}
+    >
+      PRE-IPO
+    </span>
+  );
+}
+
 export const Chevron = ({ color = '#6E6E86' }: { color?: string }) => (
   <svg width="8" height="14" viewBox="0 0 8 14" fill="none" style={{ flexShrink: 0 }}>
     <path d="M1 1l6 6-6 6" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
